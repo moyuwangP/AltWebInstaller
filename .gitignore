@@ -1,0 +1,6 @@
+*.DS_Store
+*.idea
+*ipa
+*out
+config.json
+database.db
