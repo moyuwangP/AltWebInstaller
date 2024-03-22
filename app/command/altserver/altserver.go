@@ -28,17 +28,17 @@ func InstallIPA(ctx context.Context, ipaId string, udid string, removePlugIns bo
 		`--udid`, udid,
 		`--appleID`, util.Config().AppleId,
 		`--password`, util.Config().Password,
-		findIPAPath(ipaId),
+		path,
 	)
 	if util.Config().AnisetteUrl != "" {
 		cmd.Env = append(os.Environ(), fmt.Sprintf("ALTSERVER_ANISETTE_SERVER=%s", util.Config().AnisetteUrl))
 	}
 
 	out, err := cmd.Output()
+	fmt.Println(string(out))
 	if !strings.Contains(string(out), "Notify: Installation Succeeded") {
 		return errors.New("failed")
 	}
-	fmt.Println(string(out))
 	return errors.Wrap(err, "")
 }
 
@@ -55,7 +55,7 @@ func RemovePlugInsFromFile(path string) (string, error) {
 		return "", err
 	}
 
-	return fmt.Sprintf("tmp/%s.ipa", id), nil
+	return fmt.Sprintf("./tmp/%s.ipa", id), nil
 }
 
 func unzipFile(path string, id string) error {
@@ -63,7 +63,11 @@ func unzipFile(path string, id string) error {
 	if err != nil {
 		return errors.Wrap(err, "")
 	}
-	newArchive, err := os.Create(fmt.Sprintf("tmp/%s.ipa", id))
+	if err = os.MkdirAll("./tmp", os.ModePerm); err != nil {
+		return err
+	}
+
+	newArchive, err := os.Create(fmt.Sprintf("./tmp/%s.ipa", id))
 	if err != nil {
 		return errors.Wrap(err, "")
 	}

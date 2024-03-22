@@ -86,7 +86,7 @@ func refreshDevice(udid string) error {
 	}
 
 	for _, p := range packages {
-		if p.RefreshedAt.AddDate(0, 0, 1).Unix() <= time.Now().Unix() {
+		if p.RefreshedAt.Add(12*time.Hour).Unix() <= time.Now().Unix() {
 			if err = refreshPackage(ctx, udid, p.IPAHash); err != nil {
 				return err
 			}
