@@ -8,9 +8,6 @@ import (
 	"AltWebServer/app/util"
 	"context"
 	"fmt"
-	"github.com/pkg/errors"
-	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 	"howett.net/plist"
 	"os"
 	"regexp"
@@ -111,35 +108,21 @@ func (r *DeviceService) InstallIPA(ctx context.Context, udid string, IPAHash str
 		err                error
 		installationRecord db2.Installation
 		info               db2.Package
-		refreshedAt        = time.Now()
 	)
 
 	if err = util.DB().
 		Where("md5", IPAHash).
 		First(&info).
-		Error; errors.Is(err, gorm.ErrRecordNotFound) {
+		Error; err != nil {
 		return err
 	}
-
-	if err = altserver.InstallIPA(ctx, IPAHash, udid, removePlugIns); err != nil {
-		return err
-	}
-
 	installationRecord = db2.Installation{
 		UDID:          udid,
 		RemovePlugIns: removePlugIns,
 		MD5:           IPAHash,
 		BundleID:      info.CFBundleIdentifier,
 		BundleVersion: info.CFBundleShortVersionString,
-		RefreshedAt:   refreshedAt,
 	}
-	return util.DB().
-		Clauses(
-			clause.OnConflict{
-				Columns:   []clause.Column{{Name: "udid"}, {Name: "bundle_id"}, {Name: "bundle_version"}},
-				DoUpdates: clause.AssignmentColumns([]string{"md5", "refreshed_at"}),
-			},
-		).
-		Create(&installationRecord).
-		Error
+
+	return altserver.InstallIPA(ctx, installationRecord)
 }

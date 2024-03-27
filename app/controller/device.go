@@ -1,8 +1,10 @@
 package controller
 
 import (
+	"AltWebServer/app/command/altserver"
 	"AltWebServer/app/command/libimobiledevice"
 	"AltWebServer/app/model"
+	db2 "AltWebServer/app/model/db"
 	"AltWebServer/app/service"
 	"AltWebServer/app/util"
 	"encoding/json"
@@ -64,10 +66,12 @@ type InstallationRequest struct {
 
 func (d DeviceController) InstallApp(ctx *gin.Context) {
 	var (
-		err     error
-		udid    string
-		body    []byte
-		request InstallationRequest
+		err                error
+		udid               string
+		body               []byte
+		request            InstallationRequest
+		installationRecord db2.Installation
+		info               db2.Package
 	)
 
 	udid = ctx.Param("udid")
@@ -78,16 +82,45 @@ func (d DeviceController) InstallApp(ctx *gin.Context) {
 		d.responseFailAndExit(ctx, http.StatusInternalServerError, err.Error())
 	}
 
-	if err = service.Device.InstallIPA(
-		ctx.Request.Context(), udid,
-		request.Package, request.RemovePlugIns,
-	); errors.Is(err, gorm.ErrRecordNotFound) {
+	if err = util.DB().
+		Where("md5", request.Package).
+		First(&info).
+		Error; errors.Is(err, gorm.ErrRecordNotFound) {
 		d.responseFailAndExit(ctx, http.StatusNotFound, fmt.Sprintf("ipa with hash '%s' not found", request.Package))
 	} else if err != nil {
 		d.responseFailAndExit(ctx, http.StatusInternalServerError, err.Error())
+
+	}
+	installationRecord = db2.Installation{
+		UDID:          udid,
+		RemovePlugIns: request.RemovePlugIns,
+		MD5:           request.Package,
+		BundleID:      info.CFBundleIdentifier,
+		BundleVersion: info.CFBundleShortVersionString,
 	}
 
-	ctx.JSON(http.StatusOK, map[string]string{"status": "ok"})
+	cmd, err := altserver.InstallIPAStream(ctx, installationRecord)
+	if err != nil {
+		d.responseFailAndExit(ctx, http.StatusInternalServerError, err.Error())
+	}
+	ctx.Writer.Header().Set("Content-Type", "text/event-stream")
+	ctx.Writer.Header().Set("Cache-Control", "no-cache")
+	ctx.Writer.Header().Set("Connection", "keep-alive")
+	ctx.Writer.Header().Set("Transfer-Encoding", "chunked")
+
+	ctx.Stream(func(w io.Writer) bool {
+		if cmd.HasNextLine() {
+			ctx.SSEvent("message", cmd.NextLine())
+			return true
+		}
+
+		if err := cmd.Finish(); err != nil {
+			ctx.SSEvent("failed", err.Error())
+		} else {
+			ctx.SSEvent("success", "ok")
+		}
+		return false
+	})
 }
 
 func (d DeviceController) UninstallPackage(ctx *gin.Context) {

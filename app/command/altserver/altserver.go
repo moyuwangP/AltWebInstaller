@@ -1,31 +1,86 @@
 package altserver
 
 import (
+	db2 "AltWebServer/app/model/db"
 	"AltWebServer/app/util"
 	"archive/zip"
+	"bufio"
 	"context"
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
+	"gorm.io/gorm/clause"
 	"io"
 	"os"
 	"os/exec"
 	"regexp"
 	"strings"
+	"time"
 )
 
-func InstallIPA(ctx context.Context, ipaId string, udid string, removePlugIns bool) error {
+type InstallCommand struct {
+	*exec.Cmd
+	InstallParams db2.Installation
+	stdout        string
+	scanner       Scanner
+	path          string
+}
+
+type Scanner interface {
+	Scan() bool
+	Text() string
+	Split(split bufio.SplitFunc)
+}
+
+var ErrorInstallFailed = errors.New("failed")
+
+func (cmd *InstallCommand) HasNextLine() bool {
+	return cmd.scanner.Scan()
+}
+
+func (cmd *InstallCommand) NextLine() string {
+	line := cmd.scanner.Text()
+	util.LogDebug(line)
+	cmd.stdout += fmt.Sprintf("%s\n", line)
+	return line
+}
+
+func (cmd *InstallCommand) Finish() error {
+	if cmd.InstallParams.RemovePlugIns {
+		defer os.Remove(cmd.path)
+	}
+	for cmd.HasNextLine() {
+		cmd.NextLine()
+	}
+	if err := cmd.Wait(); err != nil {
+		return errors.Wrap(err, "unable to finish command")
+	}
+	if !strings.Contains(cmd.stdout, "Notify: Installation Succeeded") {
+		return ErrorInstallFailed
+	}
+
+	return util.DB().
+		Clauses(
+			clause.OnConflict{
+				Columns:   []clause.Column{{Name: "udid"}, {Name: "bundle_id"}, {Name: "bundle_version"}},
+				DoUpdates: clause.AssignmentColumns([]string{"md5", "refreshed_at"}),
+			},
+		).
+		Create(&cmd.InstallParams).
+		Error
+}
+
+func InstallIPAStream(ctx context.Context, installation db2.Installation) (*InstallCommand, error) {
 	var err error
-	path := findIPAPath(ipaId)
-	if removePlugIns {
+	path := findIPAPath(installation.MD5)
+	if installation.RemovePlugIns {
 		if path, err = RemovePlugInsFromFile(path); err != nil {
-			return errors.Wrap(err, "")
+			return nil, errors.Wrap(err, "")
 		}
-		defer os.Remove(path)
 	}
 	cmd := exec.CommandContext(
 		ctx, util.Config().AltserverPath,
-		`--udid`, udid,
+		`--udid`, installation.UDID,
 		`--appleID`, util.Config().AppleId,
 		`--password`, util.Config().Password,
 		path,
@@ -34,12 +89,27 @@ func InstallIPA(ctx context.Context, ipaId string, udid string, removePlugIns bo
 		cmd.Env = append(os.Environ(), fmt.Sprintf("ALTSERVER_ANISETTE_SERVER=%s", util.Config().AnisetteUrl))
 	}
 
-	out, err := cmd.Output()
-	fmt.Println(string(out))
-	if !strings.Contains(string(out), "Notify: Installation Succeeded") {
-		return errors.New("failed")
+	installation.RefreshedAt = time.Now()
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to open stdout")
 	}
-	return errors.Wrap(err, "")
+
+	if err = cmd.Start(); err != nil {
+		return nil, errors.Wrap(err, "unable to start command")
+	}
+	scanner := bufio.NewScanner(stdout)
+	scanner.Split(bufio.ScanLines)
+
+	return &InstallCommand{Cmd: cmd, InstallParams: installation, scanner: scanner, path: path}, nil
+}
+
+func InstallIPA(ctx context.Context, installation db2.Installation) error {
+	cmd, err := InstallIPAStream(ctx, installation)
+	if err != nil {
+		return err
+	}
+	return cmd.Finish()
 }
 
 func findIPAPath(md5 string) string {
