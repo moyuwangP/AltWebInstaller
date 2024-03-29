@@ -2,5 +2,6 @@
 *.idea
 *ipa
 *out
+*app_icon
 config.json
 database.db

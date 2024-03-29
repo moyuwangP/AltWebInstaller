@@ -27,7 +27,9 @@ var Package = PackageController{}
 const (
 	infoPlistPathRegex = `^Payload/.+\.app/Info\.plist$`
 	appexPathRegex     = `^Payload/.+\.app/PlugIns/.+\.appex/$`
+	appIconRegex       = `^Payload/.+\.app/%s.+\.png$`
 	tmpIpa             = "ipa/%s"
+	appIcon            = "app_icon/%s"
 )
 
 func (p PackageController) Upload(ctx *gin.Context) {
@@ -68,6 +70,19 @@ func (p PackageController) Get(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, ipa)
 }
 
+func (p PackageController) GetAppIcon(ctx *gin.Context) {
+	var (
+		err error
+	)
+	hash := ctx.Param("hash")
+	data, err := os.ReadFile(fmt.Sprintf(appIcon, hash))
+	if err != nil {
+		p.responseFailAndExit(ctx, http.StatusNotFound, err.Error())
+	}
+
+	ctx.Data(http.StatusOK, "image/png", data)
+}
+
 func saveIPA(ctx *gin.Context) (string, error) {
 	var (
 		ipaBytes []byte
@@ -93,6 +108,7 @@ func sniffIPAInfo(md5 string) (info db2.Package, err error) {
 	var (
 		reader io.ReadCloser
 		bytes  []byte
+		infoP  infoPlist
 	)
 
 	archive, err := zip.OpenReader(fmt.Sprintf(tmpIpa, md5))
@@ -115,14 +131,21 @@ func sniffIPAInfo(md5 string) (info db2.Package, err error) {
 			return
 		}
 
-		if _, err = plist.Unmarshal(bytes, &info); err != nil {
+		if _, err = plist.Unmarshal(bytes, &infoP); err != nil {
 			return
 		}
 		break
 	}
 	if !infoFound {
 		return info, errors.New("malformed ipa: info plist not found")
+	}
 
+	info = db2.Package{
+		CFBundleName:               infoP.CFBundleName,
+		CFBundleShortVersionString: infoP.CFBundleShortVersionString,
+		CFBundleIdentifier:         infoP.CFBundleIdentifier,
+		ContainsPlugIn:             false,
+		MD5:                        md5,
 	}
 
 	for _, f := range archive.File {
@@ -132,6 +155,42 @@ func sniffIPAInfo(md5 string) (info db2.Package, err error) {
 		}
 	}
 
-	info.MD5 = md5
+	if len(infoP.CFBundleIcons.CFBundlePrimaryIcon.CFBundleIconFiles) > 0 {
+		iconFile := infoP.CFBundleIcons.CFBundlePrimaryIcon.CFBundleIconFiles[0]
+		for _, f := range archive.File {
+			if ok, _ := regexp.MatchString(fmt.Sprintf(appIconRegex, iconFile), f.Name); ok {
+				if reader, err = f.Open(); err != nil {
+					util.LogError(err.Error())
+					break
+				}
+				if bytes, err = io.ReadAll(reader); err != nil {
+					util.LogError(err.Error())
+					break
+				}
+				if err = os.MkdirAll("./app_icon", os.ModePerm); err != nil {
+					util.LogError(err.Error())
+					break
+				}
+				if err = os.WriteFile(fmt.Sprintf(appIcon, md5), bytes, os.ModePerm); err != nil {
+					util.LogError(err.Error())
+					break
+				}
+				break
+			}
+		}
+	}
+
 	return
+}
+
+type infoPlist struct {
+	CFBundleName               string `json:"cf_bundle_name"`
+	CFBundleShortVersionString string `json:"cf_bundle_short_version_string"`
+	CFBundleIdentifier         string `json:"cf_bundle_identifier"`
+	CFBundleIcons              struct {
+		CFBundlePrimaryIcon struct {
+			CFBundleIconFiles []string `json:"CFBundleIconFiles"`
+			CFBundleIconName  string   `json:"CFBundleIconName"`
+		} `json:"CFBundlePrimaryIcon"`
+	} `json:"CFBundleIcons"`
 }

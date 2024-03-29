@@ -53,6 +53,11 @@ var apis = map[string]group{
 				handler: controller.Package.Get,
 				method:  http.MethodGet,
 			},
+			{
+				url:     ":hash/app-icon",
+				handler: controller.Package.GetAppIcon,
+				method:  http.MethodGet,
+			},
 		},
 	},
 	"api/udid": {
