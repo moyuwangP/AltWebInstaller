@@ -6,7 +6,14 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [
       react(),
-      VitePWA({ registerType: 'autoUpdate' })
+      VitePWA({
+        registerType: 'autoUpdate',
+        manifest: {
+          name: 'AltWebInstaller',
+          short_name: 'AltWebInstaller',
+          theme_color: '#0f7e82'
+        }
+      })
   ],
   server: {
     proxy: {
