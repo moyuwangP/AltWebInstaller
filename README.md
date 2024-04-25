@@ -16,4 +16,5 @@ AltWebServer is a web server helps people side load IPAs on their iDevices.
 4. download alterser-linux executable on your computer and make it executable
 5. mv config.json.example config.json
 6. config your Apple ID, password, altserver_path and anisett_url(optional) in your config.json. **Note: Your Apple ID, and it's password will be saved as plaintext on your computer, make sure your computer is not compromised or your Apple ID might get STOLEN**
-7. run ./altwebserver
+7. ./build.sh
+8. ./alt-web-installer
