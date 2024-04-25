@@ -2,13 +2,14 @@ package router
 
 import (
 	"AltWebServer/app/controller"
+	"AltWebServer/app/middleware"
 	"github.com/gin-gonic/gin"
 	"net/http"
 )
 
 var middlewares = []gin.HandlerFunc{
 	//middleware.CatchPanic,
-	//middleware.CORSHandler,
+	middleware.CORSHandler,
 }
 
 var apis = map[string]group{
@@ -70,6 +71,11 @@ var apis = map[string]group{
 			{
 				url:     "",
 				handler: controller.UDID.GetUDID,
+				method:  http.MethodGet,
+			},
+			{
+				url:     "registration-file",
+				handler: controller.UDID.RegistrationFile,
 				method:  http.MethodGet,
 			},
 		},

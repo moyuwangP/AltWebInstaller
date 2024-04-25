@@ -115,9 +115,10 @@ func (d DeviceController) InstallApp(ctx *gin.Context) {
 		}
 
 		if err := cmd.Finish(); err != nil {
-			ctx.SSEvent("failed", err.Error())
+			ctx.SSEvent("message", "failed")
+			ctx.SSEvent("message", err.Error())
 		} else {
-			ctx.SSEvent("success", "ok")
+			ctx.SSEvent("message", "ok")
 		}
 		return false
 	})

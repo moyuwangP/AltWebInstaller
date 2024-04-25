@@ -22,8 +22,9 @@ type DeviceService struct {
 
 type OnDevicePackage struct {
 	libimobiledevice.Package
-	IPAHash     string `json:"ipa_hash"`
-	RefreshedAt time.Time
+	IPAHash       string `json:"ipa_hash"`
+	RefreshedAt   time.Time
+	RemovePlugIns bool
 }
 
 func (r *DeviceService) AppsInstalled(ctx context.Context, udid string) ([]OnDevicePackage, error) {
@@ -34,11 +35,12 @@ func (r *DeviceService) AppsInstalled(ctx context.Context, udid string) ([]OnDev
 
 	var installationRecords []struct {
 		db2.Package
-		RefreshedAt time.Time
+		RefreshedAt   time.Time
+		RemovePlugIns bool
 	}
 	err = util.DB().Table("installations").Joins("left join packages on packages.md5 = installations.md5").
 		Where("udid", udid).
-		Select("packages.*, installations.refreshed_at").
+		Select("packages.*, installations.refreshed_at, installations.remove_plug_ins").
 		Find(&installationRecords).
 		Error
 	if err != nil {
@@ -50,9 +52,10 @@ func (r *DeviceService) AppsInstalled(ctx context.Context, udid string) ([]OnDev
 		for _, pack := range packages {
 			if strings.HasPrefix(pack.BundleIdentifier, record.CFBundleIdentifier) && pack.Version == record.CFBundleShortVersionString {
 				onDevice = append(onDevice, OnDevicePackage{
-					Package:     pack,
-					RefreshedAt: record.RefreshedAt,
-					IPAHash:     record.MD5,
+					Package:       pack,
+					RefreshedAt:   record.RefreshedAt,
+					IPAHash:       record.MD5,
+					RemovePlugIns: record.RemovePlugIns,
 				})
 			}
 		}

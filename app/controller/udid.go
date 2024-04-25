@@ -7,6 +7,7 @@ import (
 	"howett.net/plist"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
@@ -93,4 +94,17 @@ func (receiver *UDIDController) GetUDID(ctx *gin.Context) {
 		receiver.responseFailAndExit(ctx, http.StatusInternalServerError, err.Error())
 	}
 	ctx.JSON(http.StatusOK, map[string]string{"udid": udid})
+}
+
+func (receiver *UDIDController) RegistrationFile(ctx *gin.Context) {
+	var (
+		bytes []byte
+		err   error
+	)
+	if bytes, err = os.ReadFile("./registration.mobileconfig"); err != nil {
+		panic(err)
+	}
+	file := string(bytes)
+	file = strings.ReplaceAll(file, ":address", ctx.Request.Host)
+	ctx.Data(http.StatusOK, "application/x-apple-aspen-config", []byte(file))
 }

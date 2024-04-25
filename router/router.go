@@ -9,6 +9,8 @@ import (
 	"github.com/pkg/errors"
 	"io"
 	"net/http"
+	"path"
+	"path/filepath"
 )
 
 type api struct {
@@ -37,6 +39,16 @@ func Setup(engine *gin.Engine) {
 			})...)
 		}
 	}
+
+	engine.NoRoute(func(c *gin.Context) {
+		dir, file := path.Split(c.Request.RequestURI)
+		ext := filepath.Ext(file)
+		if file == "" || ext == "" {
+			c.File("./dist/index.html")
+		} else {
+			c.File("./dist" + path.Join(dir, file))
+		}
+	})
 }
 
 type Handler func(ctx *gin.Context)

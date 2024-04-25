@@ -5,3 +5,6 @@
 *app_icon
 config.json
 database.db
+*dist
+AltServerData
+*/dlv

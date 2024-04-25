@@ -7,6 +7,7 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
+	"github.com/aofei/mimesniffer"
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
 	"gorm.io/gorm"
@@ -44,8 +45,10 @@ func (p PackageController) Upload(ctx *gin.Context) {
 	}
 
 	if info, err = sniffIPAInfo(fileId); errors.Is(err, zip.ErrFormat) {
+		os.Remove(fmt.Sprintf(tmpIpa, fileId))
 		p.responseFailAndExit(ctx, http.StatusBadRequest, err.Error())
 	} else if err != nil {
+		os.Remove(fmt.Sprintf(tmpIpa, fileId))
 		p.responseFailAndExit(ctx, http.StatusInternalServerError, err.Error())
 	}
 
@@ -53,6 +56,7 @@ func (p PackageController) Upload(ctx *gin.Context) {
 		Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "md5"}}}).
 		Create(&info).
 		Error; err != nil {
+		os.Remove(fmt.Sprintf(tmpIpa, fileId))
 		p.responseFailAndExit(ctx, http.StatusInternalServerError, "unable to save ipa")
 	}
 
@@ -80,7 +84,8 @@ func (p PackageController) GetAppIcon(ctx *gin.Context) {
 		p.responseFailAndExit(ctx, http.StatusNotFound, err.Error())
 	}
 
-	ctx.Data(http.StatusOK, "image/png", data)
+	ctx.Header("cache-control", "max-age=3600")
+	ctx.Data(http.StatusOK, mimesniffer.Sniff(data), data)
 }
 
 func saveIPA(ctx *gin.Context) (string, error) {
